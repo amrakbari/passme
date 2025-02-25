@@ -7,7 +7,7 @@ from common.models import BaseModel
 
 
 class BaseUserManager(BUM):
-    def create_user(self, email, is_active=True, is_admin=False, password=None):
+    def create_user(self, email, is_active=False, is_admin=False, password=None):
         if not email:
             raise ValueError('user must have an email address')
 
@@ -37,9 +37,10 @@ class BaseUserManager(BUM):
 
 class BaseUser(BaseModel, AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=False)
     is_admin = models.BooleanField(default=False)
     USERNAME_FIELD = 'email'
+    objects = BaseUserManager()
 
     def __str__(self):
         return self.email
