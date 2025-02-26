@@ -1,3 +1,4 @@
+import datetime
 from enum import verify
 from pydoc import resolve
 from typing import NoReturn
@@ -12,6 +13,7 @@ from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from django.shortcuts import get_object_or_404
 from django.core.mail import send_mail, BadHeaderError
 
+from common.mixins import ApiAuthMixin
 from common.permissions import IsActive
 from config.settings import SECRET_KEY, APPLICATION_HOST, EMAIL_HOST_USER
 from users.models import BaseUser
@@ -55,7 +57,8 @@ class LoginView(APIView):
 
         if not user.check_password(request_raw_password):
             raise serializers.ValidationError('Incorrect password.')
-
+        user.last_login = datetime.datetime.now()
+        user.save()
         return Response(self.OutputSerializer(user, context={'request': request.data}).data)
 
 class SendVerificationEmailView(APIView):
