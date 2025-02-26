@@ -1,16 +1,26 @@
+from enum import verify
 from pydoc import resolve
+from typing import NoReturn
 
-from rest_framework import serializers
+from cryptography.fernet import Fernet
+from django.http import HttpResponse
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from django.shortcuts import get_object_or_404
+from django.core.mail import send_mail, BadHeaderError
 
+from common.permissions import IsActive
+from config.settings import SECRET_KEY, APPLICATION_HOST, EMAIL_HOST_USER
 from users.models import BaseUser
 from users.validators import number_validator, letter_validator, special_char_validator
 
 
 class LoginView(APIView):
+    authentication_classes = []
+    permission_classes = (IsActive,)
     class InputSerializer(serializers.Serializer):
         email = serializers.EmailField(max_length=255)
         password = serializers.CharField()
@@ -39,12 +49,42 @@ class LoginView(APIView):
         validated_data = serializer.validated_data
 
         user = get_object_or_404(BaseUser, email=validated_data['email'])
+        self.check_object_permissions(request, user)
+
         request_raw_password = validated_data['password']
 
         if not user.check_password(request_raw_password):
             raise serializers.ValidationError('Incorrect password.')
 
         return Response(self.OutputSerializer(user, context={'request': request.data}).data)
+
+class SendVerificationEmailView(APIView):
+    class InputSerializer(serializers.Serializer):
+        email = serializers.EmailField(max_length=255)
+        password = serializers.CharField(max_length=255)
+
+    def post(self, request):
+        serializer = self.InputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated_data = serializer.validated_data
+        user = get_object_or_404(BaseUser, email=validated_data['email'])
+        if not user.check_password(validated_data['password']):
+            raise serializers.ValidationError('Incorrect password.')
+
+        cipher = Fernet(SECRET_KEY)
+        hashed_user_id = cipher.encrypt(str(user.id).encode()).decode('utf-8')
+        subject = 'email verification - passme'
+        verify_url = f'http://{APPLICATION_HOST}/users/verify/{hashed_user_id}'
+        message = f'please click the link to verify your email address: {verify_url}'
+        from_email = EMAIL_HOST_USER
+        recipient_list = [user.email]
+        try:
+            send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+        except Exception as e:
+            HttpResponse('email not sent successfully | error:', e, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return HttpResponse('email sent successfully')
+
 
 
 class RegisterView(APIView):
@@ -79,6 +119,17 @@ class RegisterView(APIView):
             model = BaseUser
             fields = ('email', 'created_at', 'updated_at', 'is_active')
 
+    def send_verification_mail(self, hashed_user_id: str, user_email: str):
+        subject = 'email verification - passme'
+        verify_url = f'http://{APPLICATION_HOST}/users/verify/{hashed_user_id}'
+        message = f'please click the link to verify your email address: {verify_url}'
+        from_email = EMAIL_HOST_USER
+        recipient_list = [user_email]
+        try:
+            send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+        except Exception as e:
+            raise e
+
     def post(self, request):
         serializer = self.InputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -88,5 +139,10 @@ class RegisterView(APIView):
             email=validated_data['email'],
             password=validated_data['password'],
         )
+
+        cipher = Fernet(SECRET_KEY)
+        hashed_user_id = cipher.encrypt(str(user.id).encode()).decode('utf-8')
+        email_result = self.send_verification_mail(hashed_user_id, str(user.email))
+
 
         return Response(self.OutputSerializer(user, context={'request': request.data}).data)
