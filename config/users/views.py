@@ -1,7 +1,4 @@
 import datetime
-from enum import verify
-from pydoc import resolve
-from typing import NoReturn
 
 from cryptography.fernet import Fernet
 from django.http import HttpResponse
@@ -9,10 +6,9 @@ from rest_framework import serializers, status
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken
 from django.shortcuts import get_object_or_404
-from django.core.mail import send_mail, BadHeaderError
+from django.core.mail import send_mail
 
 from common.mixins import ApiAuthMixin
 from common.permissions import IsActive
