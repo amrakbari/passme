@@ -6,6 +6,7 @@ from typing import NoReturn
 from cryptography.fernet import Fernet
 from django.http import HttpResponse
 from rest_framework import serializers, status
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -15,9 +16,23 @@ from django.core.mail import send_mail, BadHeaderError
 
 from common.mixins import ApiAuthMixin
 from common.permissions import IsActive
-from config.settings import SECRET_KEY, APPLICATION_HOST, EMAIL_HOST_USER
+from config.settings import SECRET_KEY, APPLICATION_HOST, EMAIL_HOST_USER, APPLICATION_PORT
 from users.models import BaseUser
 from users.validators import number_validator, letter_validator, special_char_validator
+
+
+class VerifyAPIView(APIView):
+    def get(self, request: Request, hashed_user_id: str) -> HttpResponse:
+        cipher = Fernet(SECRET_KEY)
+        # decrypt the hashed user_id
+        user_id = cipher.decrypt(hashed_user_id.encode()).decode()
+
+        # activate user
+        BaseUser.objects.filter(id=user_id).update(is_active=True)
+
+        return HttpResponse('user verified successfully',status=status.HTTP_200_OK)
+
+
 
 
 class LoginView(APIView):
@@ -77,7 +92,7 @@ class SendVerificationEmailView(APIView):
         cipher = Fernet(SECRET_KEY)
         hashed_user_id = cipher.encrypt(str(user.id).encode()).decode('utf-8')
         subject = 'email verification - passme'
-        verify_url = f'http://{APPLICATION_HOST}/users/verify/{hashed_user_id}'
+        verify_url = f'http://{APPLICATION_HOST}:{APPLICATION_PORT}/users/verify/{hashed_user_id}'
         message = f'please click the link to verify your email address: {verify_url}'
         from_email = EMAIL_HOST_USER
         recipient_list = [user.email]
